@@ -20,8 +20,7 @@ async function updateNewsFeed() {
     
     try {
         const feedUrls = [
-            'https://rocknaija-admin.blogspot.com/feeds/posts/default?alt=rss',
-            'https://feeds.bbci.co.uk/news/world/africa/rss.xml'
+            'https://rocknaija-admin.blogspot.com/feeds/posts/default?alt=rss'
         ];
         
         console.log('[Background Task] Fetching live updates...');
