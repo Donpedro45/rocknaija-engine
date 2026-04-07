@@ -9,15 +9,22 @@ const parser = new Parser();
 
 app.use(cors());
 
-app.get('/api/news', async (req, res) => {
+// This is our high-speed "Memory Box"
+let cachedNews = [];
+let isUpdating = false;
+
+// This function does the heavy lifting quietly in the background
+async function updateNewsFeed() {
+    if (isUpdating) return;
+    isUpdating = true;
+    
     try {
-        // Your Ghost Desk and the Syndicated News are now mixed together
         const feedUrls = [
             'https://rocknaija-admin.blogspot.com/feeds/posts/default?alt=rss',
             'https://feeds.bbci.co.uk/news/world/africa/rss.xml'
         ];
         
-        console.log('[Backend] Fetching from all syndication networks...');
+        console.log('[Background Task] Fetching live updates...');
 
         let allItems = [];
         for (const url of feedUrls) {
@@ -29,11 +36,8 @@ app.get('/api/news', async (req, res) => {
             }
         }
 
-        // Sort them by newest first, then grab the top 8 total
         allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
         const topItems = allItems.slice(0, 8);
-
-        console.log('[Backend] Extracting full text and images...');
         
         const fullArticles = await Promise.all(topItems.map(async (item) => {
             try {
@@ -60,12 +64,36 @@ app.get('/api/news', async (req, res) => {
             }
         }));
 
-        res.status(200).json({ status: 'success', items: fullArticles });
+        // Quietly update the memory box with the fresh news
+        cachedNews = fullArticles;
+        console.log('[Background Task] News updated successfully! Ready for instant delivery.');
 
     } catch (error) {
-        console.error('[Backend Error]', error);
-        res.status(500).json({ status: 'error', message: 'Failed to retrieve data.' });
+        console.error('[Background Task Error]', error);
+    } finally {
+        isUpdating = false;
+    }
+}
+
+// 1. Tell the engine to grab the news the second it turns on
+updateNewsFeed();
+
+// 2. Tell the engine to automatically update the news every 30 minutes (1,800,000 milliseconds)
+setInterval(updateNewsFeed, 1800000);
+
+// 3. The API Endpoint: Now it just hands over the memory box instantly
+app.get('/api/news', async (req, res) => {
+    try {
+        // If someone visits the exact second the server reboots and the box is empty, wait just a moment
+        if (cachedNews.length === 0) {
+            await updateNewsFeed();
+        }
+        
+        // Deliver the news instantly
+        res.status(200).json({ status: 'success', items: cachedNews });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Failed to deliver dispatches.' });
     }
 });
 
-app.listen(PORT, () => console.log(`🚀 RockNaija Multi-Source Engine running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 RockNaija Cache Engine running on port ${PORT}`));
