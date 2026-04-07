@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const Parser = require('rss-parser');
-const { extract } = require('article-parser'); // The new extraction tool
+const { extract } = require('article-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,33 +11,43 @@ app.use(cors());
 
 app.get('/api/news', async (req, res) => {
     try {
-        const feedUrl = 'https://feeds.bbci.co.uk/news/world/africa/rss.xml';
-        console.log(`[Backend] Fetching live feeds from: ${feedUrl}`);
-        const feed = await parser.parseURL(feedUrl);
-
-        // We only process the top 8 articles at a time so your server doesn't get overloaded
-        const topItems = feed.items.slice(0, 8);
-
-        console.log('[Backend] Extracting full text and images. This may take a few seconds...');
+        // Your Ghost Desk and the Syndicated News are now mixed together
+        const feedUrls = [
+            'https://rocknaija-admin.blogspot.com/feeds/posts/default?alt=rss',
+            'https://feeds.bbci.co.uk/news/world/africa/rss.xml'
+        ];
         
-        // This is the magic part: It visits the actual website and pulls the full content and images
+        console.log('[Backend] Fetching from all syndication networks...');
+
+        let allItems = [];
+        for (const url of feedUrls) {
+            try {
+                const feed = await parser.parseURL(url);
+                allItems = allItems.concat(feed.items);
+            } catch (e) {
+                console.log(`[Warning] Could not fetch feed: ${url}`);
+            }
+        }
+
+        // Sort them by newest first, then grab the top 8 total
+        allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+        const topItems = allItems.slice(0, 8);
+
+        console.log('[Backend] Extracting full text and images...');
+        
         const fullArticles = await Promise.all(topItems.map(async (item) => {
             try {
                 const articleData = await extract(item.link);
-                
                 return {
                     title: item.title,
                     link: item.link,
                     pubDate: item.pubDate,
-                    author: articleData?.author || 'RockNaija Wire',
-                    // Prioritize the full extracted content
+                    author: articleData?.author || 'RockNaija Editorial',
                     content: articleData?.content || item.content || item.description, 
                     description: articleData?.description || item.description || '',
-                    // Grab the main image
                     image: articleData?.image || null 
                 };
             } catch (e) {
-                console.log(`Could not extract full text for ${item.link}, falling back to summary.`);
                 return {
                     title: item.title,
                     link: item.link,
@@ -50,10 +60,7 @@ app.get('/api/news', async (req, res) => {
             }
         }));
 
-        res.status(200).json({
-            status: 'success',
-            items: fullArticles
-        });
+        res.status(200).json({ status: 'success', items: fullArticles });
 
     } catch (error) {
         console.error('[Backend Error]', error);
@@ -61,4 +68,4 @@ app.get('/api/news', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log(`🚀 RockNaija Engine running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 RockNaija Multi-Source Engine running on port ${PORT}`));
